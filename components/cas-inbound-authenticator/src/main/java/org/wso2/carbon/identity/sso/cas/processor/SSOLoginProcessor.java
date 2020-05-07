@@ -18,6 +18,7 @@
 
 package org.wso2.carbon.identity.sso.cas.processor;
 
+import org.apache.commons.lang.StringUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.wso2.carbon.identity.application.authentication.framework.exception.FrameworkException;
@@ -35,6 +36,8 @@ import org.wso2.carbon.identity.sso.cas.ticket.ServiceTicket;
 import org.wso2.carbon.identity.sso.cas.ticket.TicketGrantingTicket;
 import org.wso2.carbon.identity.sso.cas.util.CASSSOUtil;
 
+import java.net.MalformedURLException;
+import java.net.URL;
 import javax.servlet.http.Cookie;
 
 public class SSOLoginProcessor extends IdentityProcessor {
@@ -76,7 +79,39 @@ public class SSOLoginProcessor extends IdentityProcessor {
         CASResponse.CASResponseBuilder builder = new CASLoginResponse.CASLoginResponseBuilder(casMessageContext);
         String serviceUrlFromRequest = casMessageContext.getServiceURL();
         AuthenticationResult authnResult = processResponseFromFrameworkLogin(casMessageContext, identityRequest);
-        String acsURL = CASSSOUtil.getAcsUrl(serviceUrlFromRequest, casMessageContext.getRequest().getTenantDomain());
+        URL url = null;
+        try {
+            url = new URL(serviceUrlFromRequest);
+        } catch (MalformedURLException e) {
+            throw new FrameworkException("Error occurred while retrieving cas service url from: " +
+                    serviceUrlFromRequest, e);
+        }
+
+        // baseUrl MUST match the CAS Configuration Service Url.
+        String baseUrl = url.getProtocol() + "://" + url.getHost();
+        if (url.getPort() != -1) {
+            baseUrl = baseUrl + ":" + url.getPort();
+        }
+
+        // Remove info log and uncomment debug log after testing the fix.
+        log.info("Resolved base url for cas: " + baseUrl);
+        //        if (log.isDebugEnabled()) {
+        //            log.debug("Resolved base url for cas: " + baseUrl);
+        //        }
+
+        String acsURL = CASSSOUtil.getAcsUrl(baseUrl, casMessageContext.getRequest().getTenantDomain());
+
+        // We make sure that the correct SP has been picked.
+        if (StringUtils.equals(baseUrl, acsURL)) {
+            acsURL = serviceUrlFromRequest;
+        }
+
+        // Remove info log and uncomment debug log after testing the fix.
+        log.info("Resolved acsURL for cas: " + acsURL);
+        //        if (log.isDebugEnabled()) {
+        //            log.debug("Resolved acsURL for cas: " + acsURL);
+        //        }
+
         if (authnResult.isAuthenticated()) {
             String ticketGrantingTicketId = getTicketGrantingTicketId(identityRequest);
             if (ticketGrantingTicketId == null) {
